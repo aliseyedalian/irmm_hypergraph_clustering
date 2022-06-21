@@ -29,7 +29,7 @@ def cal_Dv(H,W):
     return Dv
 
 
-def irmm(H, W=None , threshold=0.01 , verbose=False, alpha = 0.5):
+def irmm(H, W=None , threshold=0.01 , max_iteration = 10000, verbose=False, alpha = 0.5):
     # Iteratively Reweighted Modularity Maximization (IRMM) Algorithm for hypergraph clustering, kumar et al. 2020
     m = np.shape(H)[1] # number of hyperedges
     if W==None:
@@ -44,8 +44,6 @@ def irmm(H, W=None , threshold=0.01 , verbose=False, alpha = 0.5):
     iteration = 0
     while True:
         iteration+=1
-        if verbose:print("===========\nIteration",iteration)
-        if verbose:print("W:\n",W)
         # compute reduced adjacency matrix (A<-H.W.(De-I)^-1.H^T)
         HW = np.matmul(H,W)
         De_I = De - np.identity(n=np.shape(De)[0])
@@ -54,24 +52,25 @@ def irmm(H, W=None , threshold=0.01 , verbose=False, alpha = 0.5):
         HT = np.transpose(H)
         A = np.matmul(HWDe_I_inv,HT)
         np.fill_diagonal(A, 0) # zero out the diagonals of A
-        if verbose:print("A:\n",A)
-
         # return number of clusters and cluster assignments
         G = nx.from_numpy_matrix(A) 
-        cluster_assignments = community_louvain.best_partition(graph=G,weight='weight',randomize=False)
-        if verbose:print('cluster_assignments:',cluster_assignments)
+        cluster_assignments = community_louvain.best_partition(graph=G,weight='weight',randomize=False)          
         cluster_ids = np.unique(list(cluster_assignments.values()))
         c = len(cluster_ids) # number of clusters
-
         
+        if verbose:
+            print("===========\nIteration",iteration)
+            print("W:\n",W)
+            print("A:\n",A)
+            print('cluster_assignments:',cluster_assignments)
+            print("\nreweighting...\n---")
+
         # Compute new weight for each hyperedge
-        if verbose:print("\nreweighting W:\n---")
         Wـprev = W.copy()  # keeps previous weight matrix
         for ei in range(m):
             e = HT[ei]
             e_nodes = [index for index,value in enumerate(e) if value == 1]
             delta_e = De[ei,ei] # = len(e_nodes)
-            if verbose:print('hyperedge',ei,"=",e_nodes,",delta_e=",delta_e)
             # Compute the number of nodes in each cluster
             cluster_nodes = dict()
             k = dict() 
@@ -79,17 +78,14 @@ def irmm(H, W=None , threshold=0.01 , verbose=False, alpha = 0.5):
                 # Set of nodes in cluster i
                 cluster_nodes[i] = [key for key,value in cluster_assignments.items() if value == i] 
                 k[i] = len([value for value in cluster_nodes[i] if value in e_nodes]) # k[i] = |e intersection C[i]|
-            if verbose:print('cluster_nodes:',cluster_nodes)
-            if verbose:print('k for this hyperedge:',k)
-            if verbose:print("---")
             # Compute new weight
             w_e = 0  # w'(e)
             for i in cluster_ids:
                 w_e += (1/m) * (1/(k[i] + 1)) * (delta_e + c)
             # Take moving average with previous weight
             W[ei,ei] =  alpha*W[ei,ei] + (1-alpha)*w_e
-        if verbose:print("W is updated.\n")
-        if np.linalg.norm(W - Wـprev) < threshold:
+
+        if np.linalg.norm(W-Wـprev)<threshold or iteration==max_iteration:
             if verbose:print("==========\nIRMM Done!\n")
             break
     return cluster_assignments
@@ -135,8 +131,6 @@ H3 = np.array([   # H(i,e): is node i in hyperedge e ?
     [0,1]
 ]) 
 print(irmm(H = H3, W=[1,3]))
-
-
 
 H4 = np.array([   # H(i,e): is node i in hyperedge e ? 
     [1,1,0,0],
